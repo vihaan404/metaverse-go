@@ -7,6 +7,9 @@ package database
 
 import (
 	"context"
+	"errors"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 const createUser = `-- name: CreateUser :one
@@ -20,9 +23,36 @@ INSERT INTO users (id, username, password, role) VALUES (
 `
 
 type CreateUserParams struct {
-	Username string
-	Password string
-	Role     UserRole
+	Username string   `json:"username"`
+	Password password `json:"password"`
+	Role     UserRole `json:"role"`
+}
+type password struct {
+	plainText *string
+	hash      string
+}
+
+func (p *password) Set(plainText string) error {
+	hash, err := bcrypt.GenerateFromPassword([]byte(plainText), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	p.plainText = &plainText
+	p.hash = hash
+	return nil
+}
+
+func (p *password) Matches(plainTextPassword string) (bool, error) {
+	err := bcrypt.CompareHashAndPassword([]byte(p.hash), []byte(plainTextPassword))
+	if err != nil {
+		switch {
+		case errors.Is(err, bcrypt.ErrMismatchedHashAndPassword):
+			return false, nil
+		default:
+			return false, err
+		}
+	}
+	return true, nil
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
